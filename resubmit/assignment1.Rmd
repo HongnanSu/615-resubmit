@@ -1,0 +1,133 @@
+---
+title: "Untitled"
+author: "HongnaSu"
+date: "2024-12-10"
+output:pdf_document
+---
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(ggplot2)
+library(knitr)
+```
+
+```{r}
+strawberry <- read_csv("strawberries25.csv", col_names = TRUE, show_col_types = FALSE)
+```
+
+```{r}
+drop_one_value_col <- function(df) {   
+  drop <- NULL  
+  for(i in 1:dim(df)[2]) {     
+    if((df |> distinct(df[,i]) |> count()) == 1) {
+      drop = c(drop, i)
+    } 
+  }
+  
+  if(is.null(drop)) { 
+    return(df) 
+  } else {
+    print("Columns dropped:")
+    print(colnames(df)[drop])
+    df <- df[, -drop]
+    return(df)
+  }
+}
+
+strawberry <- drop_one_value_col(strawberry)
+
+state_all <- strawberry |> distinct(State)
+state_all1 <- strawberry |> group_by(State) |> count()
+
+if(sum(state_all1$n) == dim(strawberry)[1]) { 
+  print("Yes, every row in the data is associated with a state.") 
+}
+
+```
+
+```{r}
+calif <- strawberry |> filter(State == "CALIFORNIA")
+
+calif_census <- calif |> filter(Program == "CENSUS")
+calif_survey <- calif |> filter(Program == "SURVEY")
+
+calif_census <- drop_one_value_col(calif_census)
+calif_survey <- drop_one_value_col(calif_survey)
+
+strawberry <- strawberry |>
+  separate_wider_delim(cols = `Data Item`,
+                       delim = ",",
+                       names = c("Fruit", "Category", "Item", "Metric"),
+                       too_many = "error",
+                       too_few = "align_start")
+
+strawberry$Category <- str_trim(strawberry$Category, side = "both")
+strawberry$Item <- str_trim(strawberry$Item, side = "both")
+strawberry$Metric <- str_trim(strawberry$Metric, side = "both")
+
+strawberry <- strawberry %>%
+  mutate(original_domain_category = `Domain Category`)
+
+chemical_data <- strawberry %>%
+  filter(str_detect(`Domain Category`, "CHEMICAL"))
+
+chemical_data <- chemical_data %>%
+  separate(col = `Domain Category`, into = c("type", "remaining"), sep = ", ", extra = "merge", fill = "right") %>%
+  separate(col = remaining, into = c("use", "chemical_info"), sep = ": ", extra = "merge", fill = "right") %>%
+  separate(col = chemical_info, into = c("name", "code"), sep = " = ", extra = "merge", fill = "right") %>%
+  mutate(
+    name = str_remove_all(name, "\\("),
+    code = str_replace_all(code, "\\(|\\)", ""),
+    code = as.numeric(code)
+  ) %>%
+  select(State, Year, original_domain_category, type, use, name, code, Value)
+
+glimpse(chemical_data)
+
+write_csv(chemical_data, "cleaned_chemical_data.csv")
+```
+
+```{r}
+glimpse(chemical_data, 1)
+```
+
+```{r}
+chemical_summary <- chemical_data %>%
+  group_by(type, use) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+ggplot(chemical_summary, aes(x = use, y = count, fill = use)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  geom_text(aes(label = count), position = position_dodge(width = 0.9), vjust = -0.5) +
+  theme_minimal() +
+  labs(title = "Chemical Use Distribution by Type",
+       x = "Chemical Use",
+       y = "Count") +
+  scale_fill_brewer(palette = "Set2")
+
+```
+
+```{r}
+bar_data <- table(chemical_data$State)
+
+barplot(bar_data,
+        main = "Distribution of Chemical Usage by State",
+        xlab = "State",
+        ylab = "Frequency of Chemical Use",
+        las = 1,
+        col = "lightblue",
+        cex.names = 0.8)
+
+strawberry %>%
+  filter(str_detect(Domain, "CHEMICAL")) %>%
+  distinct(State) %>%
+  count()
+
+```
+
+
+
